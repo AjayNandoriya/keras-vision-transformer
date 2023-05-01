@@ -34,8 +34,12 @@ class patch_extract(Layer):
     def __init__(self, patch_size):
         super(patch_extract, self).__init__()
         self.patch_size_x = patch_size[0]
-        self.patch_size_y = patch_size[0]
-        
+        self.patch_size_y = patch_size[1]
+    def get_config(self):
+        config = super().get_config()
+        config['patch_size'] = [self.patch_size_x, self.patch_size_y]
+        return config
+    
     def call(self, images):
         
         batch_size = tf.shape(images)[0]
@@ -82,9 +86,14 @@ class patch_embedding(Layer):
     def __init__(self, num_patch, embed_dim):
         super(patch_embedding, self).__init__()
         self.num_patch = num_patch
+        self.embed_dim = embed_dim
         self.proj = Dense(embed_dim)
         self.pos_embed = Embedding(input_dim=num_patch, output_dim=embed_dim)
-
+    def get_config(self):
+        config = super().get_config()
+        config['num_patch'] = self.num_patch
+        config['embed_dim'] = self.embed_dim
+        return config
     def call(self, patch):
         pos = tf.range(start=0, limit=self.num_patch, delta=1)
         embed = self.proj(patch) + self.pos_embed(pos)
@@ -105,15 +114,20 @@ class patch_merging(tf.keras.layers.Layer):
         x: downsampled patches.
     
     '''
-    def __init__(self, num_patch, embed_dim, name=''):
+    def __init__(self, num_patch, embed_dim, prefix=''):
         super().__init__()
         
         self.num_patch = num_patch
         self.embed_dim = embed_dim
-        
+        self.prefix = prefix
         # A linear transform that doubles the channels 
-        self.linear_trans = Dense(2*embed_dim, use_bias=False, name='{}_linear_trans'.format(name))
-
+        self.linear_trans = Dense(2*embed_dim, use_bias=False, name='{}_linear_trans'.format(prefix))
+    def get_config(self):
+        config = super().get_config()
+        config['num_patch'] = self.num_patch
+        config['embed_dim'] = self.embed_dim
+        config['prefix'] = self.prefix
+        return config
     def call(self, x):
         
         H, W = self.num_patch
@@ -142,7 +156,7 @@ class patch_merging(tf.keras.layers.Layer):
 
 class patch_expanding(tf.keras.layers.Layer):
 
-    def __init__(self, num_patch, embed_dim, upsample_rate, return_vector=True, name=''):
+    def __init__(self, num_patch, embed_dim, upsample_rate, return_vector=True, prefix=''):
         super().__init__()
         
         self.num_patch = num_patch
@@ -151,11 +165,18 @@ class patch_expanding(tf.keras.layers.Layer):
         self.return_vector = return_vector
         
         # Linear transformations that doubles the channels 
-        self.linear_trans1 = Conv2D(upsample_rate*embed_dim, kernel_size=1, use_bias=False, name='{}_linear_trans1'.format(name))
+        self.linear_trans1 = Conv2D(upsample_rate*embed_dim, kernel_size=1, use_bias=False, name='{}_linear_trans1'.format(prefix))
         # 
-        self.linear_trans2 = Conv2D(upsample_rate*embed_dim, kernel_size=1, use_bias=False, name='{}_linear_trans1'.format(name))
-        self.prefix = name
-        
+        self.linear_trans2 = Conv2D(upsample_rate*embed_dim, kernel_size=1, use_bias=False, name='{}_linear_trans1'.format(prefix))
+        self.prefix = prefix
+    def get_config(self):
+        config = super().get_config()
+        config['num_patch'] = self.num_patch
+        config['embed_dim'] = self.embed_dim
+        config['upsample_rate'] = self.upsample_rate
+        config['return_vector'] = self.return_vector
+        config['prefix'] = self.prefix
+        return config
     def call(self, x):
         
         H, W = self.num_patch

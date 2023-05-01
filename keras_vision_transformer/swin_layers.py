@@ -41,33 +41,41 @@ def window_reverse(windows, window_size, H, W, C):
 
 
 class Mlp(tf.keras.layers.Layer):
-    def __init__(self, filter_num, drop=0., name=''):
-        
+    def __init__(self, filter_num, drop=0., prefix=''):
+        self.filter_num = filter_num
+        self.drop = drop
+        self.prefix = prefix
         super().__init__()
         
         # MLP layers
-        self.fc1 = Dense(filter_num[0], name='{}_mlp_0'.format(name))
-        self.fc2 = Dense(filter_num[1], name='{}_mlp_1'.format(name))
+        self.fc1 = Dense(filter_num[0], name='{}_mlp_0'.format(prefix))
+        self.fc2 = Dense(filter_num[1], name='{}_mlp_1'.format(prefix))
         
         # Dropout layer
-        self.drop = Dropout(drop)
+        self.drop_layer = Dropout(drop)
         
         # GELU activation
         self.activation = tf.keras.activations.gelu
-        
+    def get_config(self):
+        config = super().get_config()
+        config['filter_num'] = self.filter_num
+        config['drop'] = self.drop
+        config['prefix'] = self.prefix
+        return config
+
     def call(self, x):
         
         # MLP --> GELU --> Drop --> MLP --> Drop
         x = self.fc1(x)
         self.activation(x)
-        x = self.drop(x)
+        x = self.drop_layer(x)
         x = self.fc2(x)
-        x = self.drop(x)
+        x = self.drop_layer(x)
         
         return x
 
 class WindowAttention(tf.keras.layers.Layer):
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0, proj_drop=0., name=''):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0, proj_drop=0., prefix=''):
         super().__init__()
         
         self.dim = dim # number of input dimensions
@@ -77,14 +85,30 @@ class WindowAttention(tf.keras.layers.Layer):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5 # query scaling factor
         
-        self.prefix = name
+        self.qkv_bias = qkv_bias
+        self.qk_scale = qk_scale
+        self.attn_drop = attn_drop
+        self.proj_drop = proj_drop
+        self.prefix = prefix
         
         # Layers
         self.qkv = Dense(dim * 3, use_bias=qkv_bias, name='{}_attn_qkv'.format(self.prefix))
-        self.attn_drop = Dropout(attn_drop)
+        self.attn_drop_layer = Dropout(attn_drop)
         self.proj = Dense(dim, name='{}_attn_proj'.format(self.prefix))
-        self.proj_drop = Dropout(proj_drop)
-
+        self.proj_drop_layer = Dropout(proj_drop)
+    def get_config(self):
+        config = super().get_config()
+        # write a function depending on current layer class
+        config['dim'] = self.dim
+        config['window_size'] = self.window_size
+        config['num_heads'] = self.num_heads
+        config['qkv_bias'] = self.qkv_bias
+        config['qk_scale'] = self.qk_scale
+        config['attn_drop'] = self.attn_drop
+        config['proj_drop'] = self.proj_drop
+        config['prefix'] = self.prefix
+        return config
+    
     def build(self, input_shape):
         
         # zero initialization
@@ -148,7 +172,7 @@ class WindowAttention(tf.keras.layers.Layer):
             attn = softmax(attn, axis=-1)
         
         # Dropout after attention
-        attn = self.attn_drop(attn)
+        attn = self.attn_drop_layer(attn)
         
         # Merge qkv vectors
         x_qkv = (attn @ v)
@@ -159,13 +183,13 @@ class WindowAttention(tf.keras.layers.Layer):
         x_qkv = self.proj(x_qkv)
         
         # Dropout after projection
-        x_qkv = self.proj_drop(x_qkv)
+        x_qkv = self.proj_drop_layer(x_qkv)
         
         return x_qkv
 
 class SwinTransformerBlock(tf.keras.layers.Layer):
     def __init__(self, dim, num_patch, num_heads, window_size=7, shift_size=0, num_mlp=1024,
-                 qkv_bias=True, qk_scale=None, mlp_drop=0, attn_drop=0, proj_drop=0, drop_path_prob=0, name=''):
+                 qkv_bias=True, qk_scale=None, mlp_drop=0, attn_drop=0, proj_drop=0, drop_path_prob=0, prefix=''):
         super().__init__()
         
         self.dim = dim # number of input dimensions
@@ -174,15 +198,21 @@ class SwinTransformerBlock(tf.keras.layers.Layer):
         self.window_size = window_size # size of window
         self.shift_size = shift_size # size of window shift
         self.num_mlp = num_mlp # number of MLP nodes
-        self.prefix = name
+        self.qkv_bias = qkv_bias
+        self.qk_scale = qk_scale
+        self.mlp_drop = mlp_drop
+        self.attn_drop = attn_drop
+        self.proj_drop = proj_drop
+        self.drop_path_prob = drop_path_prob
+        self.prefix = prefix
         
         # Layers
         self.norm1 = LayerNormalization(epsilon=1e-5, name='{}_norm1'.format(self.prefix))
         self.attn = WindowAttention(dim, window_size=(self.window_size, self.window_size), num_heads=num_heads,
-                                    qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop, name=self.prefix)
+                                    qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=proj_drop, prefix=self.prefix)
         self.drop_path = drop_path(drop_path_prob)
         self.norm2 = LayerNormalization(epsilon=1e-5, name='{}_norm2'.format(self.prefix))
-        self.mlp = Mlp([num_mlp, dim], drop=mlp_drop, name=self.prefix)
+        self.mlp = Mlp([num_mlp, dim], drop=mlp_drop, prefix=self.prefix)
         
         # Assertions
         assert 0 <= self.shift_size, 'shift_size >= 0 is required'
@@ -193,7 +223,22 @@ class SwinTransformerBlock(tf.keras.layers.Layer):
         if min(self.num_patch) < self.window_size:
             self.shift_size = 0
             self.window_size = min(self.num_patch)
-            
+    def get_config(self):
+        config = super().get_config()
+        config['dim'] = self.dim # number of input dimensions
+        config['num_patch'] = self.num_patch # number of embedded patches; a tuple of  (heigh, width)
+        config['num_heads'] = self.num_heads # number of attention heads
+        config['window_size'] = self.window_size # size of window
+        config['shift_size'] = self.shift_size # size of window shift
+        config['num_mlp'] = self.num_mlp # number of MLP nodes
+        config['qkv_bias'] = self.qkv_bias
+        config['qk_scale'] = self.qk_scale
+        config['mlp_drop'] = self.mlp_drop
+        config['attn_drop'] = self.attn_drop
+        config['proj_drop'] = self.proj_drop
+        config['drop_path_prob'] = self.drop_path_prob
+        config['prefix'] = self.prefix
+        return config  
     def build(self, input_shape):
         if self.shift_size > 0:
             H, W = self.num_patch

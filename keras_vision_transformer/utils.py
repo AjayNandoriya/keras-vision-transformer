@@ -1,6 +1,7 @@
 
 import numpy as np
 from PIL import Image
+import cv2
 
 def dummy_loader(model_path):
     '''
@@ -45,14 +46,22 @@ def image_to_array(filenames, size, channel):
     # loop over filenames
     if channel == 1:
         for i, name in enumerate(filenames):
-            with Image.open(name) as pixio:
-                pix = pixio.resize((size, size), Image.NEAREST)
-                out[i, ..., 0] = np.array(pix)
+            img = cv2.imread(name,0)
+            # img = cv2.resize(img, (size,size), interpolation=cv2.INTER_CUBIC)
+            img = img[:size, :size]
+            out[i, ..., 0] = img
+            # with Image.open(name) as pixio:
+            #     pix = pixio.resize((size, size), Image.NEAREST)
+            #     out[i, ..., 0] = np.array(pix)
     else:
         for i, name in enumerate(filenames):
-            with Image.open(name) as pixio:
-                pix = pixio.resize((size, size), Image.NEAREST)
-                out[i, ...] = np.array(pix)[..., :channel]
+            img = cv2.imread(name)
+            # img = cv2.resize(img, (size,size), interpolation=cv2.INTER_CUBIC)
+            img  = img[:size, :size, :]
+            out[i, ...] = img
+            # with Image.open(name) as pixio:
+            #     pix = pixio.resize((size, size), Image.NEAREST)
+            #     out[i, ...] = np.array(pix)[..., :channel]
     return out[:, ::-1, ...]
 
 def shuffle_ind(L):
