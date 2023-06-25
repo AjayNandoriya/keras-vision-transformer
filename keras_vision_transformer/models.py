@@ -261,3 +261,86 @@ def create_swinunet_gen_model():
     opt = tf.keras.optimizers.Adam(learning_rate=1e-4, clipvalue=0.5)
     model.compile(loss=tf.keras.losses.mse, optimizer=opt)
     return model
+
+
+def create_conv_unet()->tf.keras.models.Model:
+    filters = [4,8,16,16,16,16]
+    input_size = (None, None, 1)
+    # input_size = (128, 128, 1)
+    IN = tf.keras.layers.Input(input_size)
+
+    encode_imgs = []
+    x = tf.keras.layers.Conv2D(filters[0], (3,3), padding='SAME', activation='relu')(IN)
+    encode_imgs.append(x)
+    for i, n_filter in enumerate(filters):
+        x = tf.keras.layers.Conv2D(n_filter, (3,3), strides=(2,2), padding='SAME', activation='relu')(encode_imgs[-1])
+        encode_imgs.append(x)
+    
+    x = tf.keras.layers.Conv2D(filters[-1], (3,3), strides=(1,1), padding='SAME', activation='relu')(encode_imgs[-1])
+    decode_imgs = [x] 
+    for i in range(len(filters)-1, -1, -1):
+        n_filter = filters[i]
+        x = tf.keras.layers.UpSampling2D()(decode_imgs[-1])
+        x = tf.concat([encode_imgs[i], x],axis=-1)
+        x = tf.keras.layers.Conv2D(n_filter, (3,3), strides=(1,1), padding='SAME', activation='relu')(x)
+        decode_imgs.append(x)
+    
+    x = decode_imgs[-1]
+
+    OUT = tf.keras.layers.Conv2D(1, kernel_size=1, use_bias=False, activation='sigmoid')(x)
+
+    # Model configuration
+    model = tf.keras.models.Model(inputs=[IN,], outputs=[OUT,])
+
+    # 
+    # Optimization
+    # <---- !!! gradient clipping is important
+    opt = tf.keras.optimizers.Adam(learning_rate=1e-4, clipvalue=0.5)
+    model.compile(loss=tf.keras.losses.mse, optimizer=opt)
+    return model
+
+def create_conv_style_unet()->tf.keras.models.Model:
+    filters = [4,8,16,16,16,16]
+    input_size = (None, None, 2)
+    # input_size = (128, 128, 1)
+    IN = tf.keras.layers.Input(input_size)
+
+    IN1 = IN[:,:,:,:1]
+    IN2 = IN[:,:,:,1:2]
+    encode_imgs = []
+    x = tf.keras.layers.Conv2D(filters[0], (3,3), padding='SAME', activation='relu')(IN1)
+    encode_imgs.append(x)
+    for i, n_filter in enumerate(filters):
+        x = tf.keras.layers.Conv2D(n_filter, (3,3), strides=(2,2), padding='SAME', activation='relu')(encode_imgs[-1])
+        encode_imgs.append(x)
+    
+    x2 = tf.keras.layers.Conv2D(filters[0], (3,3), padding='SAME', activation='relu')(IN2)
+    encode_img2s = [x2]
+    for i, n_filter in enumerate(filters):
+        x = tf.keras.layers.Conv2D(n_filter, (3,3), strides=(2,2), padding='SAME', activation='relu')(encode_img2s[-1])
+        encode_img2s.append(x)
+    x2 = tf.keras.layers.Conv2D(filters[-1], (3,3), strides=(1,1), padding='SAME', activation='relu')(encode_img2s[-1])
+
+    x = tf.concat([encode_imgs[-1],encode_img2s[-1]], axis=-1)
+    x = tf.keras.layers.Conv2D(filters[-1], (3,3), strides=(1,1), padding='SAME', activation='relu')(x)
+    decode_imgs = [x] 
+    for i in range(len(filters)-1, -1, -1):
+        n_filter = filters[i]
+        x = tf.keras.layers.UpSampling2D()(decode_imgs[-1])
+        x = tf.concat([encode_imgs[i], x],axis=-1)
+        x = tf.keras.layers.Conv2D(n_filter, (3,3), strides=(1,1), padding='SAME', activation='relu')(x)
+        decode_imgs.append(x)
+    
+    x = decode_imgs[-1]
+
+    OUT = tf.keras.layers.Conv2D(1, kernel_size=1, use_bias=False, activation='sigmoid')(x)
+
+    # Model configuration
+    model = tf.keras.models.Model(inputs=[IN,], outputs=[OUT,])
+
+    # 
+    # Optimization
+    # <---- !!! gradient clipping is important
+    opt = tf.keras.optimizers.Adam(learning_rate=1e-4, clipvalue=0.5)
+    model.compile(loss=tf.keras.losses.mse, optimizer=opt)
+    return model

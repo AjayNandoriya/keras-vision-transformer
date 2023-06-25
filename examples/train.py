@@ -7,8 +7,8 @@ if __package__ is None or __package__ == '':
     PACKAGE_PATH = os.path.join(os.path.dirname(__file__), '..')
     sys.path.append(PACKAGE_PATH)
 
-from keras_vision_transformer.models import create_swinunet_gen_model
-from keras_vision_transformer.data_generator import DGS2S
+from keras_vision_transformer.models import create_swinunet_gen_model, create_conv_unet, create_conv_style_unet
+from keras_vision_transformer.data_generator import DGS2S, DGStyle
 
 def factor():
     s = 23
@@ -24,12 +24,20 @@ def factor():
 
 def train(epochs:int=10):
     filepath = os.path.join(os.path.dirname(__file__), 'datasets', 'M2S')
-    out_model_fname = os.path.join(filepath,'model.h5')
+    if 0:
+        out_model_fname = os.path.join(filepath,'conv_model.h5')
+        model = create_conv_unet()
+        dg = DGS2S(filepath=filepath)
 
-    dg = DGS2S(filepath=filepath)
+    if 1:
+        out_model_fname = os.path.join(filepath,'conv_style_model.h5')
+        model = create_conv_style_unet()
+        dg = DGStyle(filepath=filepath)
 
-    model = create_swinunet_gen_model()
+    # model = create_swinunet_gen_model()
 
+    
+    
     if os.path.isfile(out_model_fname):
         model.load_weights(out_model_fname)
 
